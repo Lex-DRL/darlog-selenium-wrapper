@@ -2,15 +2,16 @@
 """
 Common utilities being useful regardless of a chosen webdriver.
 """
+from inspect import signature as _signature, Signature as _Signature, Parameter as _Parameter
 from functools import wraps as _wraps
 import os as _os
 import re as _re
 
-from attrs import define as _define, field as _field, validators as _validators
+from attrs import define as _define, field as _field, validators as _validators, exceptions as _attrs_exceptions
 from dotenv import load_dotenv
 
 import typing as _t
-from typing import Optional as _O, Any as _A
+from typing import Optional as _O
 
 try:
 	from typing import final as _final
@@ -192,7 +193,7 @@ class Vector2DOptionalInt(_t.NamedTuple):
 			except Exception:
 				raise TypeError(
 					f"{attr.name!r} must be an iterable of 2 ints{'/None' if self.allow_none else ' (not None)'}, "
-					f"preferably Vector2DOptionalInt. Got: {value!r} (type: {value.__class__!r})"
+					f"preferably Vector2DOptionalInt. Got: {value!r} (type: {type(value)!r})"
 				)
 			return v_x, v_y
 
@@ -295,6 +296,18 @@ class Vector2DOptionalInt(_t.NamedTuple):
 			)
 
 
+def convert_to_string_or_none(value, strip=True, empty_string_to_none=True) -> _O[str]:
+	"""A simple :mod:`attrs` converter, ensuring the passed value is turned to a string or ``None``."""
+	if value is None:
+		return None
+	res = str(value)
+	if strip:
+		res = res.strip()
+	if empty_string_to_none and not res:
+		return None
+	return res
+
+
 def using_dotenv(_func=None, /, *_, verbose=True, override=True, **load_dotenv_kwargs):
 	"""A simple function decorator auto-calling `load_dotenv()`"""
 	def decorator(f: _t.Callable):
@@ -309,7 +322,89 @@ def using_dotenv(_func=None, /, *_, verbose=True, override=True, **load_dotenv_k
 	return decorator(_func)
 
 
+@_define(repr=False, frozen=True, slots=True)
+class __ValidatorValidator:
+	"""
+	An :mod:`attrs` validator which checks that the provided value is suitable to be used as ``validator`` argument
+	for some other :mod:`attrs` field.
+
+	Useful if you intend to store validators themselves in a field dedicated to them.
+	"""
+
+	@staticmethod
+	def __is_single_validator_object(x):
+		if not callable(x):
+			return False
+
+		try:
+			sig: _Signature = _signature(x, follow_wrapped=False)
+		except (ValueError, TypeError):
+			# We can't detect the signature, but it's a callable. So let's assume it has a proper signature
+			# and hope for the best (or encounter an error later during actual validation with this validator).
+			return True
+		try:
+			params = iter(sig.parameters.values())
+		except (TypeError, AttributeError, NameError):
+			# An odd case: we've detected the sig, but cannot get params? Let's assume the best again:
+			return True
+
+		# OK, let's go checking the callable's signature...
+		valid_kinds = {_Parameter.POSITIONAL_ONLY, _Parameter.POSITIONAL_OR_KEYWORD}
+		passed_args_n = 3
+		n = 0
+		for param in params:
+			try:
+				kind = param.kind
+				param_detected = True
+			except (TypeError, AttributeError, NameError):
+				kind = None
+				param_detected = False
+			if param_detected and kind == _Parameter.VAR_POSITIONAL:
+				return True
+			if (param_detected and kind not in valid_kinds) or n > passed_args_n:
+				break
+			n += 1
+		return n == passed_args_n
+
+	def __call__(self, inst, attr, raw_value, **aaa):
+		value = raw_value
+		if callable(value):
+			value = (value,)
+		if not isinstance(value, (tuple, list)):
+			raise _attrs_exceptions.NotCallableError(
+				msg=f"{attr.name!r} must be a validator or a list/tuple of them. Got: {raw_value!r} (type: {type(raw_value)!r})",
+				value=raw_value
+			)
+		is_ok_f = self.__is_single_validator_object
+		for x in value:
+			if not is_ok_f(x):
+				single_item = x is raw_value
+				this = 'this' if single_item else 'this as an item'
+				in_iterable = '' if single_item else f" in: {raw_value!r}"
+				raise _attrs_exceptions.NotCallableError(
+					msg=f"{attr.name!r} must be a list/tuple of validators. Got {this}: {x!r} (type: {type(x)!r}){in_iterable}",
+					value=raw_value
+				)
+
+	def __repr__(self):
+		return f"<Validator-validator (checks that the given value is a proper validator)>"
+
+_ValidatorValidator_instance = __ValidatorValidator()
+
+
+def validator_validator(inst, attr, raw_value):
+	"""
+	An :mod:`attrs` validator which checks that the provided value is suitable to be used as ``validator`` argument
+	for some other field.
+
+	Useful if you intend to store validators themselves in a field dedicated to them.
+	"""
+	return _ValidatorValidator_instance(inst, attr, raw_value)
+
+
 if __name__ == '__main__':
+	# Some debug/testing garbage
+
 	# @using_dotenv
 	# def test():
 	# 	import os
@@ -317,21 +412,39 @@ if __name__ == '__main__':
 	#
 	# test()
 
-	@_define
-	class TestClass:
-		window_size: Vector2DOptionalInt = _field(
-			factory=lambda: (4, 4),
-			validator=[
-				_validators.instance_of(Vector2DOptionalInt),
-				Vector2DOptionalInt.ValidatorGE(None, None, False)
-			],
-			converter=Vector2DOptionalInt.attrs_converter,
-		)
+	# @_define
+	# class TestClass:
+	# 	window_size: Vector2DOptionalInt = _field(
+	# 		factory=lambda: (4, 4),
+	# 		validator=[
+	# 			_validators.instance_of(Vector2DOptionalInt),
+	# 			Vector2DOptionalInt.ValidatorGE(None, None, False)
+	# 		],
+	# 		converter=Vector2DOptionalInt.attrs_converter,
+	# 	)
+	#
+	# test = TestClass()
+	# print(test.window_size)
+	# test.window_size = (-10, 0)
+	# test.window_size = (None, 1)
+	# print(test.window_size)
 
-	test = TestClass()
-	print(test.window_size)
-	test.window_size = (-10, 0)
-	test.window_size = (None, 1)
-	print(test.window_size)
+	# @_define
+	# class QQQ:
+	# 	bbb: int
+	# 	ccc: _O[str] = None
+	#
+	# for p in _signature(_ValidatorValidator_instance, follow_wrapped=False).parameters.values():
+	# 	print(f"{p.name} -> {p.kind}")
+	#
+	# for p in _signature(QQQ.__init__, follow_wrapped=True).parameters.values():
+	# 	print(f"{p.name} -> {p.kind}")
+
+	from attrs import Attribute
+	validator_validator(
+		None,
+		Attribute(name='qqq', default='', validator=None, repr=False, cmp=False, hash=False, init=False, inherited=False),
+		[str, list]
+	)
 
 	pass
