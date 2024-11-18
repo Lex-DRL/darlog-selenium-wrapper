@@ -4,6 +4,7 @@ Common utilities being useful regardless of a chosen webdriver.
 """
 from functools import wraps as _wraps
 import os as _os
+import re as _re
 
 from attrs import define as _define, field as _field, validators as _validators
 from dotenv import load_dotenv
@@ -31,6 +32,21 @@ class StaticClass:
 	@_final
 	def __init__(self, *args, **kwargs):
 		raise TypeError(f"<{self.__class__.__name__}> is a static (non-instantiable) class")
+
+
+_re_vector2_precise_match_spaces = _re.compile(  # '123'
+	'^[0-9]+$',
+	flags=_re.IGNORECASE
+).match
+_re_vector2_precise_match_separator = _re.compile(  # '123x456' '123x' 'x456' 'x', any single char instead of <x>
+	'^([0-9]+)?[^0-9]([0-9]+)?$',
+	flags=_re.IGNORECASE
+).match
+_re_vector2_env_search = _re.compile(  # "~~bEcAuSe <123> I'm VeRy [456] sTuPiD!!!111 - and can't even follow formats"
+	'([0-9]+)'
+	'(?:[^0-9]+([0-9]+))?',
+	flags=_re.IGNORECASE
+).search
 
 
 class Vector2DOptionalInt(_t.NamedTuple):
@@ -64,6 +80,72 @@ class Vector2DOptionalInt(_t.NamedTuple):
 			)
 		except Exception:
 			return value
+
+	@staticmethod
+	def __parse_from_string(value: str) -> _O[_t.Tuple[_O[int], _O[int]]]:
+		if not value:
+			return None
+		# First, let's check if the string is perfectly formatted with SINGLE space. Aka '123 456' or '123 ' or ' 456' or '7':
+		split = value.split(' ')
+		if len(split) in [1, 2] and all(
+			(not a or _re_vector2_precise_match_spaces(a))
+			for a in split
+		):
+			# Yep, we have a string perfectly-formatted with a space.
+			ints = tuple((int(x) if x else None) for x in split)
+			if len(ints) == 1:
+				comp = ints[0]
+				return None if comp is None else (comp, comp)
+			# noinspection PyTypeChecker
+			return ints
+
+		# The precise-space match failed. Let's try 'x' format. I.e., '123x456' or '123x' or 'x456' or 'x', where
+		# 'x' can be replaced with any non-numeric character.
+		match = _re_vector2_precise_match_separator(value.strip().lower())
+		if match:
+			ints = tuple((int(x) if x else None) for x in match.groups())
+			if len(ints) == 2:
+				# noinspection PyTypeChecker
+				return ints
+
+		# Both precise formats failed. Let's do our best detecting the value...
+		match = _re_vector2_env_search(value)
+		if not match:
+			return None
+		ints = tuple(int(x) for x in match.groups() if x is not None)
+		if not ints:
+			return None
+		if len(ints) == 1:
+			comp = ints[0]
+			return comp, comp
+		# noinspection PyTypeChecker
+		return ints
+
+	@staticmethod
+	def env_to_vector_or_none(value) -> _O['Vector2DOptionalInt']:
+		"""A utility method turing an environment-variable string into the tuple instance."""
+		if value is None:
+			return None
+		if isinstance(value, str):
+			ints = Vector2DOptionalInt.__parse_from_string(value)
+			if ints is None:
+				return None
+			x, y = ints
+			if x is None and y is None:
+				return None
+			return Vector2DOptionalInt(x, y)
+
+		res = Vector2DOptionalInt.attrs_converter(value)
+		if not(res is None or isinstance(res, Vector2DOptionalInt)):
+			raise TypeError(
+				f"Environment variable (string) is expected (or None/Vector2DOptionalInt/iterable of ints). Got: {value!r}"
+			)
+		return res
+
+	@staticmethod
+	def env_to_vector(value) -> 'Vector2DOptionalInt':
+		res = Vector2DOptionalInt.env_to_vector_or_none(value)
+		return Vector2DOptionalInt() if res is None else res
 
 	@_define(repr=False, frozen=True, slots=True)
 	class ValidatorGE:
