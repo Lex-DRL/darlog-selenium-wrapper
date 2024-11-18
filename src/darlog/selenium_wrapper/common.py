@@ -402,6 +402,15 @@ def validator_validator(inst, attr, raw_value):
 	return _ValidatorValidator_instance(inst, attr, raw_value)
 
 
+is_callable_validator = _validators.is_callable()
+
+
+def is_callable_or_none_validator(inst, attr, value):
+	if value is None:
+		return
+	is_callable_validator(inst, attr, value)
+
+
 if __name__ == '__main__':
 	# Some debug/testing garbage
 
