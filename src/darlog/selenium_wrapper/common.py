@@ -296,6 +296,27 @@ class Vector2DOptionalInt(_t.NamedTuple):
 			)
 
 
+_bool_env_false_values = {'', '0', 'no', 'off', 'false', }
+_bool_env_none_values = {'', 'none', }
+
+
+def bool_env(value) -> bool:
+	"""A utility class converting a environment variable string with True/False/empty value to an actual boolean."""
+	if isinstance(value, bool):
+		return value
+	if isinstance(value, str):
+		return not (value.strip().lower() in _bool_env_false_values)
+	return bool(value)
+
+
+def bool_or_none_env(value) -> _O[bool]:
+	return (
+		None
+		if (value is None or (isinstance(value, str) and value.strip().lower() in _bool_env_none_values))
+		else bool_env(value)
+	)
+
+
 def convert_to_string_or_none(value, strip=True, empty_string_to_none=True) -> _O[str]:
 	"""A simple :mod:`attrs` converter, ensuring the passed value is turned to a string or ``None``."""
 	if value is None:
