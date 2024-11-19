@@ -1,0 +1,56 @@
+[build-system]
+requires = ["build", "setuptools", "twine", "darlog-pypi>=1.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+dynamic = ["version", "description", "readme", "license", "authors", "maintainers", "urls"]
+name = "darlog-selenium-wrapper"
+requires-python = ">=3.6"
+dependencies = [
+    # "darlog>=0.0.1a0",
+    "attrs",
+    "fake-useragent",
+    "python-dotenv",
+    "selenium",
+    "webdriver-manager",
+]
+keywords = ["selenium", "wrapper", "simple"]
+# https://pypi.org/classifiers/
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python",
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Environment :: Web Environment :: Mozilla",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Topic :: Internet",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+
+# [project.scripts]
+# cli-name = "mypkg.mymodule:some_func"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+# include = ["mypackage*"] # ["*"] by default
+# exclude = ["mypackage.tests*"] # empty by default
+
+[tool.setuptools.package-data]
+# https://setuptools.pypa.io/en/latest/userguide/datafiles.html#package-data
+"*" = ["*.txt", "*.md", "*.rst"]
+# mypkg1 = ["data1.rst"]
+
+# [tool.setuptools.exclude-package-data]
+# https://setuptools.pypa.io/en/latest/userguide/datafiles.html#exclude-package-data
+# "*" = ["README.md"]
